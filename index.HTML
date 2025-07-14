@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ball Escape Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h2, #info {
+      margin: 5px;
+    }
+    canvas {
+      background: #222;
+      margin-top: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px #000;
+    }
+    #controls {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      align-items: center;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+    #restartBtn {
+      background: #0f0;
+      color: #000;
+    }
+    #toggleRotationBtn {
+      background: #09f;
+      color: white;
+    }
+    #muteBtn {
+      background: #f90;
+      color: black;
+    }
+    button:hover {
+      transform: scale(1.05);
+      filter: brightness(1.2);
+    }
+    input[type="number"] {
+      width: 80px;
+      padding: 8px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+      text-align: center;
+    }
+    input[type="range"] {
+      width: 150px;
+    }
+    label {
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h2>🎯 Escaped Balls: <span id="escapedCount">0</span></h2>
+  <div id="info">🟢 Balls in Circle: <span id="insideCount">0</span></div>
+
+  <div id="controls">
+    <label>Number of Balls:</label>
+    <input type="number" id="ballInput" min="1" value="5" />
+
+    <label>Speed:</label>
+    <input type="range" id="speedRange" min="1" max="10" value="2" />
+    <span id="speedDisplay">2</span>x
+
+    <label>Gate Size:</label>
+    <input type="range" id="gateSizeRange" min="5" max="90" value="45" />
+    <span id="gateSizeDisplay">45</span>°
+
+    <label>Rotation Speed:</label>
+    <input type="range" id="rotationSpeedRange" min="0" max="100" value="10" />
+    <span id="rotationSpeedDisplay">0.01</span>
+
+    <button id="restartBtn" onclick="resetGame()">🔄 Start</button>
+    <button id="toggleRotationBtn" onclick="toggleRotation()">🔁 Rotation: ON</button>
+    <button id="muteBtn" onclick="toggleMute()">🔊 Sound: ON</button>
+  </div>
+
+  <canvas id="canvas" width="600" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const centerX = canvas.width / 2;
+const centerY = canvas.height / 2;
+const circleRadius = 250;
+
+let gateSizeDeg = 45;
+let gateAngle = 0;
+let rotateGate = true;
+let gateRotateSpeed = 0.01;
+let escapedCount = 0;
+let balls = [];
+let particles = [];
+let baseSpeed = 2;
+let soundEnabled = true;
+
+const ballInput = document.getElementById("ballInput");
+const speedRange = document.getElementById("speedRange");
+const speedDisplay = document.getElementById("speedDisplay");
+const gateSizeRange = document.getElementById("gateSizeRange");
+const gateSizeDisplay = document.getElementById("gateSizeDisplay");
+const rotationSpeedRange = document.getElementById("rotationSpeedRange");
+const rotationSpeedDisplay = document.getElementById("rotationSpeedDisplay");
+const toggleRotationBtn = document.getElementById("toggleRotationBtn");
+const muteBtn = document.getElementById("muteBtn");
+
+speedRange.addEventListener("input", () => {
+  baseSpeed = parseInt(speedRange.value);
+  speedDisplay.textContent = baseSpeed;
+  balls.forEach(ball => {
+    const angle = Math.atan2(ball.vy, ball.vx);
+    const speed = baseSpeed + Math.random();
+    ball.vx = Math.cos(angle) * speed;
+    ball.vy = Math.sin(angle) * speed;
+  });
+});
+
+gateSizeRange.addEventListener("input", () => {
+  gateSizeDeg = parseInt(gateSizeRange.value);
+  gateSizeDisplay.textContent = gateSizeDeg;
+});
+
+rotationSpeedRange.addEventListener("input", () => {
+  const val = parseInt(rotationSpeedRange.value);
+  gateRotateSpeed = (val / 1000).toFixed(3);
+  rotationSpeedDisplay.textContent = gateRotateSpeed;
+  rotateGate = gateRotateSpeed > 0;
+});
+
+function toggleRotation() {
+  rotateGate = !rotateGate;
+  toggleRotationBtn.textContent = rotateGate ? "🔁 Rotation: ON" : "⏸️ Rotation: OFF";
+}
+
+function toggleMute() {
+  soundEnabled = !soundEnabled;
+  muteBtn.textContent = soundEnabled ? "🔊 Sound: ON" : "🔇 Sound: OFF";
+}
+
+function randomBrightColor() {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 100%, 50%)`;
+}
+
+function addBallPair() {
+  for (let i = 0; i < 2; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const speed = baseSpeed + Math.random();
+    balls.push({
+      x: centerX + Math.cos(angle) * 5,
+      y: centerY + Math.sin(angle) * 5,
+      radius: 10,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color: randomBrightColor(),
+      escaped: false,
+      visible: true
+    });
+  }
+}
+
+function resetGame() {
+  escapedCount = 0;
+  document.getElementById("escapedCount").textContent = "0";
+  balls = [];
+  particles = [];
+  let count = parseInt(ballInput.value);
+  if (isNaN(count) || count < 1) count = 5;
+  for (let i = 0; i < count; i++) addBallPair();
+}
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playCollisionSound() {
+  if (!soundEnabled) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(300 + Math.random() * 100, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.05);
+}
+
+function drawCircleWithGate() {
+  const gateStart = gateAngle;
+  const gateEnd = gateAngle + (gateSizeDeg * Math.PI / 180);
+  ctx.beginPath();
+  ctx.strokeStyle = "#0ff";
+  ctx.lineWidth = 4;
+  ctx.arc(centerX, centerY, circleRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 6;
+  ctx.arc(centerX, centerY, circleRadius, gateStart, gateEnd);
+  ctx.stroke();
+}
+
+function drawBall(ball) {
+  if (!ball.visible) return;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+  ctx.fillStyle = ball.color;
+  ctx.fill();
+}
+
+function updateBall(ball) {
+  if (!ball.visible) return;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  const dx = ball.x - centerX;
+  const dy = ball.y - centerY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx);
+  const normAngle = (angle + 2 * Math.PI) % (2 * Math.PI);
+  const gateStart = gateAngle;
+  const gateEnd = gateAngle + (gateSizeDeg * Math.PI / 180);
+  const inGate = normAngle >= gateStart && normAngle <= gateEnd;
+
+  if (!ball.escaped && dist + ball.radius >= circleRadius) {
+    if (inGate) {
+      ball.escaped = true;
+      ball.color = "lime";
+      escapedCount++;
+      document.getElementById("escapedCount").textContent = escapedCount;
+      addBallPair();
+      createParticleBurst(ball.x, ball.y, ball.color);
+    } else {
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const dot = ball.vx * nx + ball.vy * ny;
+      ball.vx -= 2 * dot * nx;
+      ball.vy -= 2 * dot * ny;
+    }
+  }
+
+  if (
+    ball.x < -ball.radius || ball.x > canvas.width + ball.radius ||
+    ball.y < -ball.radius || ball.y > canvas.height + ball.radius
+  ) {
+    ball.visible = false;
+  }
+}
+
+function checkBallCollisions() {
+  for (let i = 0; i < balls.length; i++) {
+    for (let j = i + 1; j < balls.length; j++) {
+      const a = balls[i], b = balls[j];
+      if (!a.visible || !b.visible || a.escaped || b.escaped) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const overlap = a.radius + b.radius - dist;
+      if (overlap > 0) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.x -= nx * overlap / 2;
+        a.y -= ny * overlap / 2;
+        b.x += nx * overlap / 2;
+        b.y += ny * overlap / 2;
+        const tempVx = a.vx, tempVy = a.vy;
+        a.vx = b.vx; a.vy = b.vy;
+        b.vx = tempVx; b.vy = tempVy;
+        playCollisionSound();
+      }
+    }
+  }
+}
+
+function updateBallCountDisplay() {
+  const inside = balls.filter(b => !b.escaped && b.visible).length;
+  document.getElementById("insideCount").textContent = inside;
+}
+
+function createParticleBurst(x, y, color) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const speed = Math.random() * 4 + 1;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: Math.random() * 3 + 1,
+      color,
+      life: 30
+    });
+  }
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+}
+
+function updateParticles() {
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (rotateGate && gateRotateSpeed > 0) {
+    gateAngle += parseFloat(gateRotateSpeed);
+    if (gateAngle > 2 * Math.PI) gateAngle -= 2 * Math.PI;
+  }
+  drawCircleWithGate();
+  checkBallCollisions();
+  balls.forEach(ball => {
+    drawBall(ball);
+    updateBall(ball);
+  });
+  updateParticles();
+  drawParticles();
+  updateBallCountDisplay();
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
